@@ -37,6 +37,7 @@ export const purchaseCourse = async (req, res) => {
     const { courseId } = req.body;
     const { origin } = req.headers;
     const userId = req.auth.userId;
+
     const userData = await User.findById(userId);
     const courseData = await Course.findById(courseId);
 
@@ -44,20 +45,28 @@ export const purchaseCourse = async (req, res) => {
       return res.json({ success: false, message: 'Data Not Found' });
     }
 
+    // Hitung harga setelah diskon, pastikan berupa angka
+    const rawAmount = courseData.coursePrice - (courseData.discount * courseData.coursePrice) / 100;
+    const amount = Math.round(rawAmount * 100) / 100; // 2 angka di belakang koma
+
+    if (amount < 0.5) {
+      return res.json({ success: false, message: 'Course price too low to process payment.' });
+    }
+
     const purchaseData = {
       courseId: courseData._id,
       userId,
-      amount: (courseData.coursePrice - (courseData.discount * courseData.coursePrice) / 100).toFixed(2),
+      amount: amount,
     };
 
     const newPurchase = await Purchase.create(purchaseData);
 
-    // STRIPE GATEAWAY INITIALIZE
+    // STRIPE GATEWAY INITIALIZE
     const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
 
     const currency = process.env.CURRENCY.toLowerCase();
 
-    // creating line items to for stripe
+    // Creating line items for Stripe
     const line_items = [
       {
         price_data: {
@@ -65,7 +74,7 @@ export const purchaseCourse = async (req, res) => {
           product_data: {
             name: courseData.courseTitle,
           },
-          unit_amount: Math.floor(newPurchase.amount) * 100,
+          unit_amount: Math.round(amount * 100), // Convert ke cents
         },
         quantity: 1,
       },
@@ -81,11 +90,66 @@ export const purchaseCourse = async (req, res) => {
       },
     });
 
-    res.json({ succes: true, session_url: session.url });
+    res.json({ success: true, session_url: session.url });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
 };
+
+// export const purchaseCourse = async (req, res) => {
+//   try {
+//     const { courseId } = req.body;
+//     const { origin } = req.headers;
+//     const userId = req.auth.userId;
+//     const userData = await User.findById(userId);
+//     const courseData = await Course.findById(courseId);
+
+//     if (!userData || !courseData) {
+//       return res.json({ success: false, message: 'Data Not Found' });
+//     }
+
+//     const purchaseData = {
+//       courseId: courseData._id,
+//       userId,
+//       amount: (courseData.coursePrice - (courseData.discount * courseData.coursePrice) / 100).toFixed(2),
+//     };
+
+//     const newPurchase = await Purchase.create(purchaseData);
+
+//     // STRIPE GATEAWAY INITIALIZE
+//     const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+//     const currency = process.env.CURRENCY.toLowerCase();
+
+//     // creating line items to for stripe
+//     const line_items = [
+//       {
+//         price_data: {
+//           currency,
+//           product_data: {
+//             name: courseData.courseTitle,
+//           },
+//           unit_amount: Math.floor(newPurchase.amount) * 100,
+//         },
+//         quantity: 1,
+//       },
+//     ];
+
+//     const session = await stripeInstance.checkout.sessions.create({
+//       success_url: `${origin}/loading/my-enrollments`,
+//       cancel_url: `${origin}/`,
+//       line_items: line_items,
+//       mode: 'payment',
+//       metadata: {
+//         purchaseId: newPurchase._id.toString(),
+//       },
+//     });
+
+//     res.json({ succes: true, session_url: session.url });
+//   } catch (error) {
+//     res.json({ success: false, message: error.message });
+//   }
+// };
 
 // add user ratings to event/course
 export const addUserRating = async (req, res) => {

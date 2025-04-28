@@ -59,12 +59,15 @@ export const getEducatorCourses = async (req, res) => {
 export const educatorDashboardData = async (req, res) => {
   try {
     const educator = req.auth.userId;
+
+    // Cari semua course yang dibuat oleh educator ini
     const courses = await Course.find({ educator });
     const totalCourses = courses.length;
 
+    // Ambil semua ID course untuk keperluan pencarian purchase
     const courseIds = courses.map((course) => course._id);
 
-    // calculate total earnings from purchase
+    // Hitung total earnings dari semua purchase yang statusnya 'completed'
     const purchases = await Purchase.find({
       courseId: { $in: courseIds },
       status: 'completed',
@@ -72,29 +75,30 @@ export const educatorDashboardData = async (req, res) => {
 
     const totalEarnings = purchases.reduce((sum, purchase) => sum + purchase.amount, 0);
 
-    // collect unique enrolled student IDs with their course titles
-    const enrolledStudentData = [];
+    // Kumpulkan data enrolled students
+    const enrolledStudentsData = [];
     for (const course of courses) {
       const students = await User.find(
         {
           _id: { $in: course.enrolledStudents },
         },
-        'name imageUrl'
+        'name imageUrl' // hanya ambil field name dan imageUrl
       );
 
       students.forEach((student) => {
-        enrolledStudentData.push({
+        enrolledStudentsData.push({
           courseTitle: course.courseTitle,
           student,
         });
       });
     }
 
+    // Kirim response sukses
     res.json({
       success: true,
       dashboardData: {
         totalEarnings,
-        enrolledStudentData,
+        enrolledStudentsData,
         totalCourses,
       },
     });
@@ -117,7 +121,7 @@ export const getEnrolledStudentsData = async (req, res) => {
       .populate('userId', 'name imageUrl')
       .populate('courseId', 'courseTitle');
 
-    const enrolledStudents = purchase.map((purchase) => ({
+    const enrolledStudents = purchases.map((purchase) => ({
       student: purchase.userId,
       courseTitle: purchase.courseId.courseTitle,
       purchaseDate: purchase.createdAt,
